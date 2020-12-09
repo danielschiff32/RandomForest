@@ -1,0 +1,245 @@
+#Upload Proper Packages--------------------------------------------------
+#Upload dplyr for data manipulation
+require(dplyr)
+#upload ggplot2 for plotting
+require(ggplot2)
+#upload random forest model
+require(randomForest)
+#-----------------------------------------------------------------------
+
+#Work done by Daniel Schiff
+
+#Upload proper data sets needed
+#------------------------------------------------------------------------
+#upload test file, name it test
+Test <- read.csv("~/CSV Files/2021-test.csv")
+#upload Train file, name it Train
+Train <- read.csv("~/CSV Files/2021-train.csv")
+
+#------------------------------------------------------------------------
+#------------------------------------------------------------------------
+#Reconfigure the column so swings = 1 and non-swings = 0
+Train$pitch_call <- ifelse(Train$pitch_call == "InPlay" | Train$pitch_call == "StrikeSwinging" |
+                             Train$pitch_call == "FoulBall", 1, 0)
+#Make sure pitch_call acts as a factor
+Train$pitch_call <- as.factor(Train$pitch_call)
+#------------------------------------------------------------------------
+#filter the columns for necessary columns
+TrainABS <- select(Train, level, pitcher_id, batter_id, pitcher_side, batter_side, inning, top_bottom,
+                outs, strikes, balls, pitch_type, release_speed, spin_rate, spin_axis, rel_height, rel_side, 
+                extension, vert_break, induced_vert_break, horz_break, plate_height, plate_side,
+                zone_speed, vert_approach_angle, horz_approach_angle, x55, z55, pitch_call, pitch_id)
+#------------------------------------------------------------------------
+# #put the right structures for the dataset
+# Train <- transform(Train, 
+#                    level = as.factor(level),
+#                    pitcher_id = as.factor(pitcher_id),
+#                    batter_id = as.factor(batter_id),
+#                    pitcher_side = as.factor(pitcher_side),
+#                    batter_side = as.factor(batter_side),
+#                    inning = as.factor(inning),
+#                    top_bottom = as.factor(top_bottom),
+#                    outs = as.factor(outs),
+#                    strikes = as.factor(strikes),
+#                    balls = as.factor(balls),
+#                    pitch_type = as.factor(pitch_type),
+#                    release_speed = as.numeric(release_speed),
+#                    spin_rate = as.numeric(spin_rate),
+#                    spin_axis = as.numeric(spin_axis),
+#                    rel_height = as.numeric(rel_height),
+#                    extension = as.numeric(extension),
+#                    vert_break = as.numeric(vert_break),
+#                    induced_vert_break = as.numeric(induced_vert_break), 
+#                    horz_break = as.numeric(horz_break), 
+#                    plate_height = as.numeric(plate_height), 
+#                    plate_side = as.numeric(plate_side),
+#                    zone_speed = as.numeric(zone_speed), 
+#                    vert_approach_angle = as.numeric(vert_approach_angle), 
+#                    horz_approach_angle = as.numeric(horz_approach_angle), 
+#                    x55 = as.numeric(x55), 
+#                    z55 = as.numeric(z55), 
+#                    pitch_call = as.factor(pitch_call))
+#-----------------------------------------------------------------------
+#Create new data set called TrainABS to find the absolute value of horzonital measurements
+TrainABS$rel_side <- 0 - abs(TrainABS$rel_side)
+TrainABS$horz_break <- 0 - abs(TrainABS$horz_break)
+TrainABS$plate_side <- 0 - abs(TrainABS$plate_side)
+TrainABS$horz_approach_angle <- 0 - abs(TrainABS$horz_approach_angle)
+TrainABS$x55 <- 0 - abs(TrainABS$x55)
+#Break down a column into whether or not the pitch would be in the "zone"
+TrainABS <- mutate(TrainABS, zone = case_when(plate_height <= 2.75 & plate_height >= 2.25 & plate_side >= -.35 ~ "Heart",
+                                            plate_height <= 3.5 & plate_height >= 1.5 & plate_side >= -.71 ~ "Zone",
+                                            plate_height <= 4 & plate_height >= 1 & plate_side >= -1 ~ "Edge",
+                                            TRUE ~ "Away"))
+TrainABS$zone <- as.factor(TrainABS$zone)
+#break down the data by count
+TrainABS$count <- paste0(TrainABS$balls, TrainABS$strikes)
+TrainABS <- mutate(TrainABS, count1 = case_when(count == 01 | count == 02| count == 12| count == 22 ~ "Behind",
+                                                   count == 00 | count == 11 | count == 21 | count == 32~ "Even",
+                                                   TRUE ~ "Ahead"))
+TrainABS$count1 <- as.factor(TrainABS$count1)
+
+#Do the same thing for test
+TestABS <- select(Test, level, pitcher_id, batter_id, pitcher_side, batter_side, inning, top_bottom,
+                  outs, strikes, balls, pitch_type, release_speed, spin_rate, spin_axis, rel_height, rel_side, 
+                  extension, vert_break, induced_vert_break, horz_break, plate_height, plate_side,
+                  zone_speed, vert_approach_angle, horz_approach_angle, x55, z55, is_swing, pitch_id)
+TestABS$rel_side <- 0 - abs(TestABS$rel_side)
+TestABS$horz_break <- 0 - abs(TestABS$horz_break)
+TestABS$plate_side <- 0 - abs(TestABS$plate_side)
+TestABS$horz_approach_angle <- 0 - abs(TestABS$horz_approach_angle)
+TestABS$x55 <- 0 - abs(TestABS$x55)
+#Break down a column into whether or not the pitch would be in the "zone"
+TestABS <- mutate(TestABS, zone = case_when(plate_height <= 2.75 & plate_height >= 2.25 & plate_side >= -.35 ~ "Heart",
+                                              plate_height <= 3.5 & plate_height >= 1.5 & plate_side >= -.71 ~ "Zone",
+                                              plate_height <= 4 & plate_height >= 1 & plate_side >= -1 ~ "Edge",
+                                              TRUE ~ "Away"))
+TestABS$zone <- as.factor(TestABS$zone)
+TestABS$count <- paste0(TestABS$balls, TestABS$strikes)
+TestABS <- mutate(TestABS, count1 = case_when(count == 01 | count == 02| count == 12| count == 22 ~ "Behind",
+                                                   count == 00 | count == 11 | count == 21 | count == 32~ "Even",
+                                                   TRUE ~ "Ahead"))
+TestABS$count1 <- as.factor(TestABS$count1)
+#------------------------------------------------------------------------
+#Filter the datasets for each level to get the random forest to run without a GB issue
+MLB <- filter(TrainABS, level == "MLB")
+AAA <- filter(TrainABS, level == "AAA")
+AA <- filter(TrainABS, level == "AA")
+A <- filter(TrainABS, level == "A")
+AdvA <- filter(TrainABS, level == "A+")
+#------------------------------------------------------------------------
+#------------------------------------------------------------------------
+#Build the Random Forest models
+memory.size(max = TRUE)
+memory.limit(size = 100000)
+
+set.seed(32)
+MLBrf <- randomForest(pitch_call ~ pitch_type + count1 + release_speed + spin_rate +  induced_vert_break + horz_break + zone, 
+                      data = MLB, ntree = 512, na.action = na.exclude)
+MLBrf
+
+AAArf <- randomForest(pitch_call ~ pitch_type + count1 + release_speed + spin_rate + induced_vert_break + horz_break + zone, 
+                      data = AAA, ntree = 512, na.action = na.exclude)
+AAArf
+
+AArf <- randomForest(pitch_call ~ pitch_type + count1 + release_speed + spin_rate + induced_vert_break + horz_break + zone, 
+                     data = AA, ntree = 512, na.action = na.exclude)
+AArf
+
+Arf <- randomForest(pitch_call ~ pitch_type + count1 + release_speed + spin_rate + induced_vert_break + horz_break + zone, 
+                    data = A, ntree = 512, na.action = na.exclude)
+Arf
+
+AdvArf <- randomForest(pitch_call ~ pitch_type + count1 + release_speed + spin_rate + induced_vert_break + horz_break + zone, 
+                       data = AdvA, ntree = 512, na.action = na.exclude)
+AdvArf
+#------------------------------------------------------------------------
+#Get the prediction for the random forest models
+
+
+MLBT <- filter(TestABS, level == "MLB")
+MLBp <- predict(MLBrf, newdata = MLBT)
+MLBC <- cbind(MLBT, MLBp)
+
+AAAT <- filter(TestABS, level == "AAA")
+AAAp <- predict(AAArf, newdata = AAAT)
+AAAC <- cbind(AAAT, AAAp)
+
+
+AAT <- filter(TestABS, level == "AA")
+AAp <- predict(AArf, newdata = AAT)
+AAC <- cbind(AAT, AAp)
+
+
+AT <- filter(TestABS, level == "A")
+Ap <- predict(Arf, newdata = AT)
+AC <- cbind(AT, Ap)
+
+
+AdvAT <- filter(TestABS, level == "A+")
+AdvAp <- predict(AdvArf, newdata = AdvAT)
+AdvAC <- cbind(AdvAT, AdvAp)
+#--------------------------------------------------------------------------
+#make a constant column for all the predictions
+MLBC$is_swing <- MLBC$MLBp
+AAAC$is_swing <- AAAC$AAAp
+AAC$is_swing <- AAC$AAp
+AdvAC$is_swing <- AdvAC$AdvAp
+AC$is_swing <- AC$Ap
+#--------------------------------------------------------------------------
+#select out the column that does not fit AKA Drop it
+MLBC <- select(MLBC, -33)
+AAAC <- select(AAAC, -33)
+AAC <- select(AAC, -33)
+AC <- select(AC, -33)
+AdvAC <- select(AdvAC, -33)
+
+#Bind the rows/datasets together
+Total <- rbind(MLBC, AAAC, AAC, AdvAC, AC)
+Total$is_swing <- as.factor(Total$is_swing)
+#get rid of NAs
+Total[is.na(Total)] <- 0
+#look at summary
+summary(Total)
+
+
+write.csv(Total, "~/CSV Files/Final.csv")
+#------------------------------------------------------------------------
+#For Coaching Staff
+
+#For the coaching staff I would print out reports to look through production through the levels
+#ideally this would be similar to in what counts and what zones do hitter swing in different levels, by different pitch types
+
+
+
+TrainABS$pitch_call <- as.numeric(TrainABS$pitch_call)
+TrainABS <- mutate(TrainABS, pitch_call = pitch_call-1)
+TTL <- TrainABS %>%
+  group_by(level, zone, count1, batter_id, pitch_type) %>%
+  summarise(MeanPC = mean(pitch_call), CountPC = sum(pitch_call))
+
+LC <- TrainABS %>%
+  group_by(batter_id) %>%
+  summarise(Levels = n_distinct(level))
+ 
+Look <- merge(LC, TTL, by.x = "batter_id")
+Look <- filter(Look, Levels >= 2 & CountPC >=2) 
+n_distinct(Look$batter_id)
+ 
+Look1 <- Look %>%
+  group_by(level, count1, zone, pitch_type) %>%
+  summarise(PercentSwung = mean(MeanPC*CountPC/CountPC), Total = sum(CountPC))
+Look1 <- filter(Look1, Total >= 5)
+
+IDs <- as.character(unique(Look$batter_id))
+#see if we notice anything from looking at individual players charts
+for(i in 1:length(IDs)){
+  ID <- IDs[i]
+  Look2 <- filter(Look, batter_id == ID)
+  g <- ggplot(Look2, aes(x = level, y = MeanPC, group = pitch_type, color = pitch_type)) +
+    geom_line() + 
+    xlab("Professional Level") + ylab("Swing %") +
+    labs(title = "Swing Percentage Charts", subtitle = "By Level, Count and Zone",
+         caption = paste0(ID)) +
+    theme_bw() + 
+    scale_color_manual(name = "Pitch Type",breaks = c("CH", "CU", "FA", "KN", "SI", "SL"),
+                       values = c("green", "skyblue", "darkred","purple" ,"orange", "yellow")) + 
+    facet_wrap(~count1 + zone)
+  ggsave(paste0(ID, " Progression", ".pdf"), g, width = 11, height = 8.5)
+}
+
+
+#After looking at the players who have played at two or more levels their is not enough data
+#now I combine all the levels of players that played at several levels
+t <- ggplot(Look1, aes(x = level, y = PercentSwung, group = pitch_type, color = pitch_type)) +
+  geom_line() + 
+  xlab("Professional Level") + ylab("Swing %") +
+  labs(title = "Swing Percentage Charts", subtitle = "By Level, Count and Zone") +
+  theme_bw() + 
+  scale_color_manual(name = "Pitch Type",breaks = c("CH", "CU", "FA", "KN", "SI", "SL"),
+                     values = c("green", "skyblue", "darkred","purple" ,"orange", "yellow")) + 
+  facet_wrap(~count1 + zone)
+ggsave(paste0("Level by Level Progression", ".pdf"), t, width = 11, height = 8.5)
+
+laov <- aov(PercentSwung ~ pitch_type + level + count1 + zone, data = Look1)
+summary(laov)
